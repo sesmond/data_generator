@@ -167,19 +167,6 @@ def randome_intefer_line(img, possible, line_num, weight):
     del draw
 
 
-# # 画干扰点
-# def randome_intefer_point(img,possible,num):
-#
-#     if not _random_accept(possible): return
-#
-#     w,h = img.size
-#     draw = ImageDraw.Draw(img)
-#
-#     point_num = random.randint(0, num)
-#     for i in range(point_num):
-#         x,y = _get_random_point(w,h)
-#         draw.point([x,y], _get_random_color())
-#     del draw
 
 # 专门用来产生数字，可能有负数，两边随机加上空格
 def _generate_num():
@@ -675,7 +662,7 @@ def process_one_sentence(x, y, background_image, image_width, charset, font_dir)
     if x + width > image_width:
         # logger.debug("生成句子的右侧位置[%d]超过行宽[%d]，此行终结", x+words_image_width, image_width)
         return None, None
-
+    # TODO words_image 小图直接贴上去！！！
     background_image.paste(words_image, (x, y), words_image)
     # x1, y1, x2, y2, x3, y3, x4, y4
     label = [
@@ -738,11 +725,6 @@ if __name__ == '__main__':
 
     DATA_DIR = args.dir
     TYPE = args.type
-
-    # # 处理具有工商信息语义信息的语料库，去除空格等不必要符号
-    # with open(ROOT+'/info.txt', 'r', encoding='utf-8') as file:
-    #     info_list = [part.replace('\t', '') for part in file.readlines()] # \t不能显示正常，删掉
-    #     info_str = ''.join(info_list)
 
     total = int(args.num)
 

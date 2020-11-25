@@ -6,7 +6,7 @@ import os, math
 import logging as logger
 
 from app.generator import string_generator
-from app.utils import file_utils, image_utils
+from app.utils import file_utils, image_utils, box_utils
 
 '''
 #1. 从文字库随机选择10个字符
@@ -297,8 +297,17 @@ def generate_all(bground_list, image_name, label_name, font_dir):
     while True:
         # 产生一行的标签,格式是[x1,y1,x2,y2,x3,y3,x4,y4]
         one_row_labels = generate_row(i, y, background_image=image, image_width=w, font_dir=font_dir)
-        one_image_labels += one_row_labels
-
+        # TODO 过滤坐标，相交的不写入
+        loop_box = box_utils.Box(one_image_labels)
+        is_inter = False
+        for temp_labels in one_image_labels:
+            inter_area = loop_box.intersection_area(box_utils.Box(temp_labels))
+            if inter_area > 0:
+                is_inter = True
+                break
+        if not is_inter:
+            print("相交，不写入")
+            one_image_labels.append(one_row_labels)
         # 主要是提前看看高度是否超过底边了，超过了，就算产生完了
         line_height = random.randint(MIN_LINE_HEIGHT, MAX_LINE_HEIGHT)
         # logger.debug("行高：%d",line_height)
@@ -473,26 +482,6 @@ def create_one_sentence_image(font_dir, corpus=None):
             txt_draw.text((0 + sum(words_width[0:i]) + i * int(space_width), 0), w,
                           fill=font_color,
                           font=font)
-
-    # e = 0
-    # if _random_accept(POSSIBILITY_CUT_EDGE):
-    #     # TODO 不能切，可以大不要小
-    #     e = random.randint(MIN_EDGE_HEIGHT, MAX_EDGE_HEIGHT)  # 随机产生要切边的大小
-    # 相关api：https://blog.csdn.net/kisssfish/article/details/96483483
-    #
-    # words_image = Image.new('RGBA', (width, height - e))
-    # draw = ImageDraw.Draw(words_image)
-    # # 注意下，下标是从0,0开始的，是自己的坐标系
-    # # TODO 贴文字，可以循环贴单字，横着的的可以直接贴进去。
-    #
-    # #  横着的和竖着的，
-    # #  direction -文字的方向。它可以是'rtl'（从右到左），'ltr'（从左到右）或'ttb'（从上到下）
-    # # direction = direction
-    # # direction 需要装libraqm 比较麻烦，先替换掉。
-    # draw.text((0, 0), random_word, fill=font_color, font=font)
-
-    ############### PIPELINE ###########################
-    # medium_image = words_image.copy()
     words_image, points = random_affine(words_image)
     words_image, points = random_rotate(words_image, points)
     randome_intefer_line(words_image, POSSIBILITY_WORD_INTEFER, INTERFER_WORD_LINE_NUM,

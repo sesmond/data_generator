@@ -52,6 +52,7 @@ def parse_arguments():
         nargs="?",
         help="Define how many words should be included in each generated sample. If the text source is Wikipedia, this is the MINIMUM length",
         default=20
+        # 每个文本框的文字个数
     )
     parser.add_argument(
         "-r",
@@ -114,7 +115,7 @@ def parse_arguments():
         type=int,
         nargs="?",
         help="Define the orientation of the text. 0: Horizontal, 1: Vertical",
-        default=1
+        default=0
     )
     parser.add_argument(
         "-tc",
@@ -123,6 +124,7 @@ def parse_arguments():
         nargs="?",
         help="Define the text's color, should be either a single hex color or a range in the ?,? format.",
         default='#282828'
+        #     TODO 文字颜色固定了
     )
     parser.add_argument(
         "-sw",
@@ -130,7 +132,7 @@ def parse_arguments():
         type=float,
         nargs="?",
         help="Define the width of the spaces between words. 2.0 means twice the normal space width",
-        default=1.0
+        default=0.1
     )
 
     return parser.parse_args()
@@ -158,16 +160,14 @@ def main():
     fonts = load_fonts(args.language)
 
     # Creating synthetic sentences (or word)
-    strings = []
     strings = create_strings_from_dict(args.length, args.random, args.count, lang_dict)
-    string_count = len(strings)
 
     imgLists = load_img(args.background_dir)
 
     for i, img in enumerate(imgLists):
         try:
             generate(i, img,
-                     random.sample(strings, random.randint(1, 40)),
+                     random.sample(strings, random.randint(10, 100)),
                      fonts[random.randrange(0, len(fonts))],
                      args.output_dir, args.extension, args.width, args.text_color,
                      args.orientation, args.space_width, args.font_size)
