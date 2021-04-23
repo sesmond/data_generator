@@ -1,3 +1,5 @@
+from multiprocessing import Pool
+
 from PIL import Image, ImageDraw, ImageFont
 import random
 import cv2
@@ -293,33 +295,20 @@ def generate_all(bground_list, image_name, label_name, font_dir):
 
     # 一张图的坐标，格式是[[x1,y1,x2,y2,x3,y3,x4,y4],....],8个，这个不是我发明的，是这个开源项目要求的
     # 后续要用这个8个坐标去产生更小的anchor
-    one_image_labels = []
-    while True:
+    all_labels = []
+    all_words = []
+    text_count = random.randint(30, 100)
+    # while True:
+    for i in range(text_count):
         # 产生一行的标签,格式是[x1,y1,x2,y2,x3,y3,x4,y4]
-        one_row_labels = generate_row(i, y, background_image=image, image_width=w, font_dir=font_dir)
-        # TODO 过滤坐标，相交的不写入
-        loop_box = box_utils.Box(one_image_labels)
-        is_inter = False
-        for temp_labels in one_image_labels:
-            inter_area = loop_box.intersection_area(box_utils.Box(temp_labels))
-            if inter_area > 0:
-                is_inter = True
-                break
-        if not is_inter:
-            print("相交，不写入")
-            one_image_labels.append(one_row_labels)
-        # 主要是提前看看高度是否超过底边了，超过了，就算产生完了
-        line_height = random.randint(MIN_LINE_HEIGHT, MAX_LINE_HEIGHT)
-        # logger.debug("行高：%d",line_height)
-        y = y + line_height
-        i += 1
-        if y + line_height > h:  # 多算一行高度，来看看是否到底部了？
-            # logger.debug("达到了图片最高的位置")
-            break
+        one_box, word = process_one_sentence(image, font_dir, all_labels)
+        if one_box:
+            all_labels.append(one_box)
+            all_words.append(word)
     # TODO 划线
     draw_img = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
-    boxes = np.array(one_image_labels).reshape(-1, 4, 2)
-    draw_img = image_utils.draw_boxes(draw_img, boxes, True)
+    boxes = np.array(all_labels).reshape(-1, 4, 2)
+    # draw_img = image_utils.draw_boxes(draw_img, boxes, True)
     cv2.imwrite(image_name, draw_img)
     # image = Image.fromarray(cv2.cvtColor(draw_img, cv2.COLOR_BGR2RGB))
     # image.save(image_name)
@@ -327,38 +316,11 @@ def generate_all(bground_list, image_name, label_name, font_dir):
     logger.debug("生成样本图像  %s", image_name)
 
     with open(label_name, "w") as label_file:
-        for label in one_image_labels:
+        for i, label in enumerate(all_labels):
             xy_info = ",".join([str(pos) for pos in label])
+            xy_info += "," + all_words[i]
             label_file.write(xy_info)
             label_file.write("\n")
-
-
-# 产生一行的文字，里面又有一个循环，是产生多个句子
-def generate_row(i, y, background_image, image_width, font_dir):
-    # logger.debug("---------------------------------")
-    # logger.debug("开始准备产生第%d行", i)
-    next_x = 0
-    one_row_labels = []
-
-    # 先随机空出一部分
-    blank_width = random.randint(MIN_BLANK_WIDTH, MAX_BLANK_WIDTH)
-    next_x += blank_width
-    while True:
-        # 产生一个句子，并返回这个句子的文字，还有这个句子句尾巴的x坐标，如果是None，说明已经到最右面了，也就是说，这行生成结束了
-        next_x, label = process_one_sentence(next_x, y, background_image, image_width, font_dir)
-        if next_x is None:
-            break
-
-        one_row_labels.append(label)  # 把产生的4个坐标加入到这张图片的标签数组中
-
-        # 产生一个句子句子之间的空隙
-        blank_width = random.randint(MIN_BLANK_WIDTH, MAX_BLANK_WIDTH)
-
-        # logger.debug("空格长度%d",blank_width)
-        next_x += blank_width
-
-    return one_row_labels
-    # logger.debug("第%d行图片产生完毕",i)
 
 
 # 因为英文、数字、符号等ascii可见字符宽度短，所以要计算一下他的实际宽度，便于做样本的时候的宽度过宽
@@ -435,9 +397,9 @@ def _rotate_points(points, center, degree):
     return rotated_points
 
 
-def create_one_sentence_image(font_dir, corpus=None):
+def create_one_sentence_image(font_dir):
     # 随机选取10个字符，是从info.txt那个词库里，随机挑的长度的句子
-    random_word = string_generator.create_string(corpus)
+    random_word = string_generator.create_string()
     # 字号随机
     font_size = random_font_size()
     # 随机选取字体大小、颜色、字体
@@ -447,7 +409,7 @@ def create_one_sentence_image(font_dir, corpus=None):
     # logger.debug("字体的颜色是：[%r]",font_color)
     direction = 'ltr'
     is_vertical = False
-    if _random_accept(0.5):
+    if _random_accept(0.1):
         direction = 'ttb'
         is_vertical = True
 
@@ -493,25 +455,60 @@ def create_one_sentence_image(font_dir, corpus=None):
     return words_image, width, height, random_word, points
 
 
+def check_intersection(one_box, one_image_labels):
+    loop_box = box_utils.Box(one_box)
+    is_inter = False
+    for temp_labels in one_image_labels:
+        inter_area = loop_box.intersection_area(box_utils.Box(temp_labels))
+        if inter_area > 0:
+            is_inter = True
+            # print("相交，不写入")
+            break
+    return is_inter
+    # if not is_inter:
+    #     one_image_labels.append(one_box)
+
+
 # 生成的最小颗粒度，生成一句话
-def process_one_sentence(x, y, background_image, image_width, font_dir):
-    words_image, width, height, _, points = create_one_sentence_image(font_dir)
-
-    # 一算，句子的宽度超了，得嘞，这行咱就算生成完毕
-    if x + width > image_width:
-        # logger.debug("生成句子的右侧位置[%d]超过行宽[%d]，此行终结", x+words_image_width, image_width)
-        return None, None
-    # TODO words_image 小图直接贴上去！！！
-    background_image.paste(words_image, (x, y), words_image)
-    # x1, y1, x2, y2, x3, y3, x4, y4
-    label = [
-        int(x + points[0][0]), int(y + points[0][1]),
-        int(x + points[1][0]), int(y + points[1][1]),
-        int(x + points[2][0]), int(y + points[2][1]),
-        int(x + points[3][0]), int(y + points[3][1])]
-
+def process_one_sentence(background_image, font_dir, one_image_labels):
+    words_image, width, height, text_word, points = create_one_sentence_image(font_dir)
+    img_w, img_h = background_image.size
+    text_width, text_height = words_image.size
+    # 遍历5次找一个能贴图的地方
+    can_add = False
+    logger.info("文本：%r", text_word)
+    for i in range(5):
+        # TODO 减一半是什么意思？
+        if (img_w - text_width) < 5:
+            continue
+        if (img_h - text_height) < 10:
+            continue
+        # TODO 之前找过的地方还是要 尽量避免一下 就这样瞎撞效率太低了
+        x0 = random.randint(5, img_w - text_width - 1)
+        y0 = random.randint(10, img_h - text_height - 1)
+        # 如果超出边缘了就不能再贴了
+        if x0 + text_width > img_w or y0 + text_height > img_h:
+            continue
+        # TODO 改为8点坐标
+        boxlabel = [
+            int(x0 + points[0][0]), int(y0 + points[0][1]),
+            int(x0 + points[1][0]), int(y0 + points[1][1]),
+            int(x0 + points[2][0]), int(y0 + points[2][1]),
+            int(x0 + points[3][0]), int(y0 + points[3][1])]
+        check = check_intersection(boxlabel, one_image_labels)
+        if not check:
+            can_add = True
+            break
+    if can_add:
+        background_image.paste(words_image, (x0, y0), words_image)
+    else:
+        # 不能添加，则坐标不要了
+        print("不能添加：", text_word, text_width, text_height)
+        boxlabel = None
     # logger.debug("粘贴到背景上的坐标：(%r)", label)
-    return x + width, label
+    # TODO words_image 小图直接贴上去！！！
+
+    return boxlabel, text_word
 
 
 def init_logger():
@@ -519,6 +516,26 @@ def init_logger():
         format=' %(levelname)s-%(asctime)s - %(filename)s[%(lineno)d]:%(message)s',
         level=logger.DEBUG,
         handlers=[logger.StreamHandler()])
+
+
+def generate_batch(p_no, data_images_dir, data_labels_dir, total=1000):
+    font_dir = "config/fonts/cn"
+
+    # 预先加载所有的纸张背景
+    all_bg_images = file_utils.get_files(os.path.join("config", 'background/'))
+    logger.info("加载背景图片：%r", len(all_bg_images))
+
+    for num in range(0, total):
+        logger.info("创建图片总第[%r-%r]", total, num)
+        name = str(p_no) + "-" + str(num)
+        image_name = os.path.join(data_images_dir, name + ".png")
+        label_name = os.path.join(data_labels_dir, name + ".txt")
+        try:
+            generate_all(all_bg_images, image_name, label_name, font_dir)
+        except:
+            import traceback
+            traceback.print_exc()
+        logger.info("已产生[%s]", image_name)
 
 
 if __name__ == '__main__':
@@ -547,20 +564,10 @@ if __name__ == '__main__':
     if not os.path.exists(data_images_dir): os.makedirs(data_images_dir)
     if not os.path.exists(data_labels_dir): os.makedirs(data_labels_dir)
 
-    font_dir = "config/fonts/cn"
-
-    # 预先加载所有的纸张背景
-    all_bg_images = file_utils.get_files(os.path.join("config", 'background/'))
-    logger.info("加载背景图片：%r", len(all_bg_images))
-    for num in range(0, total):
-        logger.info("创建图片总第[%r-%r]", total, num)
-        image_name = os.path.join(data_images_dir, str(num) + ".png")
-        label_name = os.path.join(data_labels_dir, str(num) + ".txt")
-        try:
-            generate_all(all_bg_images, image_name, label_name, font_dir)
-
-        except:
-            import traceback
-
-            traceback.print_exc()
-        logger.info("已产生[%s]", image_name)
+    worker = 10
+    pool = Pool(processes=worker)
+    for i in range(0, worker):
+        pool.apply_async(generate_batch, args=(i, data_images_dir, data_labels_dir, 400))
+    pool.close()
+    pool.join()
+    logger.info("所有进程执行结束！！！！")

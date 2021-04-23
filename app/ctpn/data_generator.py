@@ -656,7 +656,7 @@ def create_one_sentence_image(charset, font_dir, corpus=None):
 
 # 生成的最小颗粒度，生成一句话
 def process_one_sentence(x, y, background_image, image_width, charset, font_dir):
-    words_image, width, height, _, points = create_one_sentence_image(charset, font_dir)
+    words_image, width, height, text_word, points = create_one_sentence_image(charset, font_dir)
 
     # 一算，句子的宽度超了，得嘞，这行咱就算生成完毕
     if x + width > image_width:

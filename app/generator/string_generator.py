@@ -3,8 +3,11 @@ import re
 import string
 import requests
 
-from bs4 import BeautifulSoup
+# from bs4 import BeautifulSoup
 import numpy as np
+import os
+
+from app.utils import file_utils
 
 """
 生成样本字符串
@@ -35,17 +38,57 @@ confusion_set = '的一是在不了和这为上个我以要他时来们生到作
 达走积示议声报斗完类八离华确才科张马节米空况今集温传土许步群广石需段研界拉林律叫且究观越织装影算低持音众书布复容儿须际商非验连断深难近矿千周委素技半办\
 青省列习响约般史感劳便团往酸历克何除消构府太准精值率族维划选标存候毛亲快效斯院查江眼王按格养易置派层片始却专状育厂京适属圆包火住调满县局照参红细引听该铁严'
 
+all_txt = []
 
-def create_string(corpus):
+
+def read_corpus():
+    fn = "config/textgroup"
+    files = file_utils.get_files(fn, ['txt'])
+    # print files
+    random.shuffle(files)
+    filecnt = 10
+    global all_txt
+    all_txt = []
+    for filename in files:
+        filecnt -= 1
+        if filecnt == 0:
+            break
+        # TODO 本来就是str了应该不需要decode了
+        print("打开文件：", filename)
+        with open(filename, 'r') as f:
+            for l in f.readlines():
+                line = l.strip()
+                # TODO utf8 不需要解码
+                if len(line) > 0:
+                    all_txt.append(line)
+                # else:
+                #     print(line)
+    random.shuffle(all_txt)
+
+
+def create_string():
+    #TODO 日期和数字最好不要变成竖行的，排列问题很大。
+    # 可以生成段落还有 句子 以及单个单词。
     # 根据文章生成
-    if corpus:
-        random_word, _ = _get_random_text_from_corpus(corpus)
+    if _random_accept(0.6):
+        # TODO 语料库里找
+        random_word, _ = _get_random_text_from_corpus()
     else:
         # 根据字符集生成
         random_word, _ = _get_random_text(charset)
     # 首位不要空格，影响检测效果 TODO 中间也不要太多空格，有空格的一般要检测成两块
     random_word = random_word.strip()
-    print(random_word)
+    # max_sentence = 35
+    max_sentence = MAX_LENGTH
+    ori_len = len(random_word)
+    if ori_len > max_sentence:
+        # print("修改前：", random_word)
+        text_len = random.randint(MIN_LENGTH, max_sentence)
+        start = random.randint(0, len(random_word) - text_len - 1)
+        random_word = random_word[start: start + text_len]
+    elif ori_len == 0:
+        # 等于0 不要了
+        return create_string()
     return random_word
 
 
@@ -193,10 +236,10 @@ def _generate_confusion():
 
 
 # 从语料库中随机获取文本行
-def _get_random_text_from_corpus(corpus):
+def _get_random_text_from_corpus():
     # corpus:文本行列表
-    i = random.randrange(len(corpus))
-    sentence = corpus[i].strip()
+    i = random.randrange(len(all_txt))
+    sentence = all_txt[i].strip()
     return sentence, len(sentence)
 
 
@@ -270,3 +313,12 @@ def enhance_special_charactors(s):
         s = s[:pos] + c + s[pos:]
     # logger.debug("插入特殊字符后：%s", s)
     return s
+
+
+read_corpus()
+
+if __name__ == '__main__':
+    read_corpus()
+    for i in range(100):
+        str1 = create_string()
+        print(str1)
